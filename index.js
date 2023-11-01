@@ -7,7 +7,7 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 app.use(cors({
-    origin: ['http://localhost:5174'],
+    origin: ['http://localhost:5174', 'http://localhost:5173'],
     credentials: true
 }));
 app.use(express.json());
@@ -34,6 +34,23 @@ const logger = async(req, res, next) => {
     next();
 }
 
+const verifyToken = async(req, res, next) => {
+    const token = req.cookies?.token;
+    console.log(token);
+    if(!token){
+      return  res.status(401).send({message: 'Not Authorized'})
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if(err){
+            return res.status(401).send({message: 'Unauthorized'})
+        }
+        console.log('code is', decoded);
+        req.user = decoded;
+        next();
+    })
+    
+}
+
 
 async function run() {
     try {
@@ -46,7 +63,7 @@ async function run() {
 
         // auth related api
 
-        app.post('/jwt', logger, async(req, res) => {
+        app.post('/jwt', logger,  async(req, res) => {
             const user = req.body;
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
 
@@ -58,7 +75,7 @@ async function run() {
             .send({success: true})
         })
 
-        app.get('/services', logger, async (req, res) => {
+        app.get('/services', async (req, res) => {
             const cursor = servicesCollections.find();
             const result = await cursor.toArray();
             res.send(result);
@@ -76,7 +93,10 @@ async function run() {
 
         // bookings
 
-        app.get('/bookings', logger, async(req, res) => {
+        app.get('/bookings', logger, verifyToken, async(req, res) => {
+            if(req.query.email !== req.user.email){
+                return res.status(401).send({message: 'Not Authorized'})
+            }
             let query = {};
             if(req.query?.email){
                 query = {email: req.query.email}
